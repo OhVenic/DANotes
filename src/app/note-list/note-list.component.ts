@@ -23,10 +23,15 @@ export class NoteListComponent {
   }
 
   getList(): Note[] {
-    if(this.status == "trash"){
+    if(this.status == "notes"){
+      if(this.favFilter == "all") {
+        return this.noteService.normalNotes;
+      } else {
+        return this.noteService.normalMarkedNotes;
+      }
+    } else {  
       return this.noteService.trashNotes;
     }
-    return this.noteService.normalNotes;
   }
  
   changeFavFilter(filter:"all" | "fav"){

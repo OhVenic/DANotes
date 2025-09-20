@@ -7,6 +7,12 @@ import {
   doc,
   onSnapshot,
   addDoc,
+  updateDoc,
+  deleteDoc,
+  orderBy,
+  limit,
+  where,
+  query
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 
@@ -16,26 +22,67 @@ import { Observable } from 'rxjs';
 export class NoteListService {
   trashNotes: Note[] = [];
   normalNotes: Note[] = [];
+  normalMarkedNotes: Note[] = [];
 
   unsubTrash;
   unsubNotes;
+  unsubMarkedNotes;
 
   firestore: Firestore = inject(Firestore);
 
   constructor() {
     this.unsubTrash = this.subTrashList();
     this.unsubNotes = this.subNotesList();
+    this.unsubMarkedNotes = this.subMarkedNotesList();
   }
 
-  async addNote(item: {}) {
-    await addDoc(this.getNotesRef(), item)
-      .catch((err) => {console.error(err)})
-      .then((docRef) => {console.log("Document written with ID: ", docRef?.id)});
+  async deleteNote(colId: "notes" | "trash", docId: string) {
+    await deleteDoc(this.getSingleDocRef(colId, docId)).catch(
+      (err) => {console.log(err);
+      }
+    );
+  }
+
+  async updateNote(note: Note) {
+    if (note.id) {
+      let docRef = this.getSingleDocRef(this.getColIdFromNote(note), note.id);
+      await updateDoc(docRef, this.getCleanJson(note)).catch((err) => {
+        console.log(err);
+      });
+    }
+  }
+
+  getCleanJson(note: Note): {} {
+    return {
+      type: note.type,
+      title: note.title,
+      content: note.content,
+      marked: note.marked,
+    };
+  }
+
+  getColIdFromNote(note: Note) {
+    if (note.type === 'note') {
+      return 'notes';
+    } else {
+      return 'trash';
+    }
+  }
+
+  async addNote(item: Note, colId: "notes" | "trash") {
+    await addDoc(collection(this.firestore, colId), item)
+      .catch((err) => {
+        console.error(err);
+      })
+      .then((docRef) => {
+        console.log('Document written with ID: ', docRef?.id);
+      });
   }
 
   ngOnDestroy() {
     this.unsubTrash();
     this.unsubNotes();
+    this.unsubMarkedNotes();
   }
 
   subTrashList() {
@@ -48,10 +95,32 @@ export class NoteListService {
   }
 
   subNotesList() {
-    return onSnapshot(this.getNotesRef(), (list) => {
+    const q = query(this.getNotesRef(), limit(100));
+    return onSnapshot(q, (list) => {
       this.normalNotes = [];
       list.forEach((element) => {
         this.normalNotes.push(this.setNoteObject(element.data(), element.id));
+      });
+      list.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          console.log("New Note: ", change.doc.data());
+        }
+        if (change.type === "modified") {
+          console.log("Modified Note: ", change.doc.data());
+        }
+        if (change.type === "removed") {
+          console.log("Removed Note: ", change.doc.data());
+        }
+      })
+    });
+  }
+
+  subMarkedNotesList() {
+       const q = query(this.getNotesRef(), where("marked", "==", true), limit(100));
+    return onSnapshot(q, (list) => {
+      this.normalMarkedNotes = [];
+      list.forEach((element) => {
+        this.normalMarkedNotes.push(this.setNoteObject(element.data(), element.id));
       });
     });
   }
@@ -70,7 +139,7 @@ export class NoteListService {
 
   setNoteObject(obj: any, id: string): Note {
     return {
-      id: id,
+      id: id || "",
       type: obj.type || 'note',
       title: obj.title || '',
       content: obj.content || '',
